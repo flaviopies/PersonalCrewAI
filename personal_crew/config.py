@@ -37,9 +37,15 @@ if platform.system() != "Windows":
 # ─── 3) Ferramenta de Busca Web ────────────────────────────────────────────────
 class WebSearchTool(BaseTool):
     # **Anotações Pydantic** para que BaseTool aceite esses campos
-    name: str = "Web Search"
+    # name: str = "Web Search"
+    # description: str = "Busca em sites .br por informações atuais de eventos e notícias."
+    # search: GoogleSerperAPIWrapper  # obrigatório: anotar o tipo
+
     description: str = "Busca em sites .br por informações atuais de eventos e notícias."
-    search: GoogleSerperAPIWrapper  # obrigatório: anotar o tipo
+    # agora com default, Pydantic não reclama mais que ele está "faltando"
+    search: Optional[GoogleSerperAPIWrapper]           = None
+    name:        str                                   = "Web Search"
+
 
     def __init__(self):
         # inicializa o BaseTool corretamente
