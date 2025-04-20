@@ -1,14 +1,16 @@
+import platform
+import sys
+
+# Monkey‐patch SQLite on non‐Windows platforms before any import of chromadb/crewai
+if platform.system() != "Windows":
+    import pysqlite3
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
+
 import streamlit as st
 from personal_crew.crew import create_crew
 import json
 from datetime import datetime
 import re
-import platform, sys
-
-if platform.system() != "Windows":
-    # só em Linux/Cloud, onde sqlite3 padrão é antigo
-    __import__('pysqlite3')
-    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 # Set page config
 st.set_page_config(
@@ -44,15 +46,14 @@ def format_event_response(response):
         
         formatted_text = ""
         for section in sections:
-            if section:
-                # Extract event details
-                lines = section.split('\n')
-                event_name = lines[0].strip()
-                details = '\n'.join(lines[1:]).strip()
-                
-                # Format with emojis and better structure
-                formatted_text += f"🎉 {event_name}\n"
-                formatted_text += f"   {details}\n\n"
+            # Extract event details
+            lines = section.split('\n')
+            event_name = lines[0].strip()
+            details = '\n'.join(lines[1:]).strip()
+            
+            # Format with emojis and better structure
+            formatted_text += f"🎉 {event_name}\n"
+            formatted_text += f"   {details}\n\n"
         
         return formatted_text or response
     except Exception:
@@ -72,13 +73,8 @@ if st.button("Submit Request"):
                 # Extract and format the main response
                 if isinstance(result, dict) and 'tasks_output' in result and result['tasks_output']:
                     task_output = result['tasks_output'][0]
-                    if hasattr(task_output, 'raw'):
-                        response_text = task_output.raw
-                        if not isinstance(response_text, str):
-                            response_text = str(response_text)
-                        formatted_response = format_event_response(response_text)
-                    else:
-                        formatted_response = "No readable response available."
+                    response_text = getattr(task_output, 'raw', str(task_output))
+                    formatted_response = format_event_response(response_text)
                 else:
                     formatted_response = str(result)
                 
@@ -94,16 +90,16 @@ if st.button("Submit Request"):
                     "timestamp": datetime.now().isoformat()
                 })
         except Exception as e:
-            st.error(f"An error occurred: {str(e)}")
+            st.error(f"An error occurred: {e}")
 
 # Display chat history first
 st.header("💬 Chat History")
-if st.session_state.messages:
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.write(message["content"])
-            if "timestamp" in message:
-                st.caption(f"Sent at: {datetime.fromisoformat(message['timestamp']).strftime('%Y-%m-%d %H:%M:%S')}")
+for message in st.session_state.messages:
+    with st.chat_message(message["role"]):
+        st.write(message["content"])
+        if "timestamp" in message:
+            ts = datetime.fromisoformat(message["timestamp"])
+            st.caption(f"Sent at: {ts.strftime('%Y-%m-%d %H:%M:%S')}")
 
 # Display current response if available
 if formatted_response:
@@ -115,18 +111,17 @@ if formatted_response:
         with st.expander("🔍 Technical Details"):
             # Show token usage if available
             if isinstance(result, dict) and 'token_usage' in result:
-                st.subheader("Token Usage")
-                token_usage = result['token_usage']
+                tu = result['token_usage']
                 cols = st.columns(4)
                 with cols[0]:
-                    st.metric("Total Tokens", token_usage.total_tokens)
+                    st.metric("Total Tokens", tu.total_tokens)
                 with cols[1]:
-                    st.metric("Prompt Tokens", token_usage.prompt_tokens)
+                    st.metric("Prompt Tokens", tu.prompt_tokens)
                 with cols[2]:
-                    st.metric("Completion Tokens", token_usage.completion_tokens)
+                    st.metric("Completion Tokens", tu.completion_tokens)
                 with cols[3]:
-                    st.metric("Cached Tokens", token_usage.cached_prompt_tokens)
+                    st.metric("Cached Tokens", tu.cached_prompt_tokens)
             
             # Show raw response
             st.subheader("Raw Response")
-            st.json(str(result)) 
+            st.json(str(result))
