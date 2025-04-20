@@ -73,7 +73,16 @@ AGENT_CONFIGS = {
     "manager": {
         "role": "Personal Assistant Manager",
         "goal": "Coordenar e delegar tarefas com informações precisas e atualizadas.",
-        "backstory": "Você é um gerente experiente de assistentes pessoais...",
+# -        "backstory": "Você é um gestor experiente de assistentes pessoais…",
+        "backstory": (
+            "Você é um gestor experiente que sabe usar ferramentas.\n"
+            "Quando for delegar tarefas, use **exatamente** este formato:\n"
+            "Action: Delegate work to coworker\n"
+            "Action Input: {"
+            "\"coworker\": \"<Role do agente>\","
+            "\"task\":      \"<descrição da tarefa como string>\","
+            "\"context\":   \"<contexto completo como string>\"}"
+        ),
         "verbose": True,
         "allow_delegation": True,
         "tools": [search_tool],
