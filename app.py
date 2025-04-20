@@ -3,6 +3,12 @@ from personal_crew.crew import create_crew
 import json
 from datetime import datetime
 import re
+import platform, sys
+
+if platform.system() != "Windows":
+    # só em Linux/Cloud, onde sqlite3 padrão é antigo
+    __import__('pysqlite3')
+    sys.modules['sqlite3'] = sys.modules.pop('pysqlite3')
 
 # Set page config
 st.set_page_config(

@@ -5,3 +5,5 @@ langchain-openai>=0.0.2
 langchain-community>=0.0.10
 python-dotenv>=1.0.0
 duckduckgo-search>=3.9.0 
+chromadb
+pysqlite3-binary; platform_system=="Linux"
