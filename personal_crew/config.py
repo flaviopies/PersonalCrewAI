@@ -1,74 +1,113 @@
+# personal_crew/config.py
+
+import os
+import platform
+import sys
+from datetime import datetime
+from typing import Optional
+
+# ---------------------------
+# 1. Carregamento seguro de chaves
+# ---------------------------
+# Tenta puxar de Streamlit Secrets (produção). Caso contrário, usa .env (local).
+use_streamlit_secrets = False
+try:
+    import streamlit as st
+    if "OPENAI_API_KEY" in st.secrets:
+        use_streamlit_secrets = True
+except ImportError:
+    pass
+
+if use_streamlit_secrets:
+    # Quando em Streamlit Cloud, configure suas chaves via Manage App → Settings → Secrets
+    OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
+    SERPER_API_KEY  = st.secrets["SERPER_API_KEY"]
+else:
+    # Desenvolvimento local: carregue do .env (não versionado)
+    from dotenv import load_dotenv
+    load_dotenv()
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    SERPER_API_KEY  = os.getenv("SERPER_API_KEY")
+
+# Validações rápidas
+if not OPENAI_API_KEY:
+    raise RuntimeError("Falta OPENAI_API_KEY: defina em .env ou em Streamlit Secrets")
+if not SERPER_API_KEY:
+    raise RuntimeError("Falta SERPER_API_KEY: defina em .env ou em Streamlit Secrets")
+
+# Garanta que a lib do OpenAI a veja também via variável de ambiente
+os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
+
+# ---------------------------
+# 2. Monkey‑patch do SQLite (somente Linux/Cloud)
+# ---------------------------
+if platform.system() != "Windows":
+    try:
+        import pysqlite3
+        sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+    except ImportError:
+        # Se falhar aqui, verifique se apt.txt inclui sqlite3 e libsqlite3-dev
+        pass
+
+# ---------------------------
+# 3. Ferramenta de Busca Web (Serper.dev)
+# ---------------------------
 from langchain_community.utilities import GoogleSerperAPIWrapper
 from crewai.tools import BaseTool
-from dotenv import load_dotenv
-from typing import Optional
-import os
-from datetime import datetime
 
-# Load environment variables
-load_dotenv()
-
-# Initialize tools
 class WebSearchTool(BaseTool):
     name: str = "Web Search"
-    description: str = "Useful for searching the web for current information. Input should be a search query."
+    description: str = "Busca em sites .br para info atualizada."
     search: Optional[GoogleSerperAPIWrapper] = None
 
     def __init__(self):
         super().__init__()
-        # Initialize Serper with API key from environment variables
-        self.search = GoogleSerperAPIWrapper(serper_api_key=os.getenv('SERPER_API_KEY'))
+        self.search = GoogleSerperAPIWrapper(serper_api_key=SERPER_API_KEY)
 
     def _run(self, query: str) -> str:
-        """Execute the web search with focus on current and future events."""
         try:
-            # Add temporal context to the query
-            current_year = datetime.now().year
-            next_year = current_year + 1
-            temporal_query = f"{query} (2024 OR 2025) site:.br"
-            
-            # Perform the search
-            results = self.search.run(temporal_query)
-            
-            # If no specific results found, try a more general search
-            if not results or "no results" in results.lower():
-                return self.search.run(query + " site:.br")
-            
-            return results
+            ano = datetime.now().year
+            temporal = f"{query} ({ano} OR {ano+1}) site:.br"
+            resp = self.search.run(temporal)
+            if not resp or "no results" in resp.lower():
+                return self.search.run(f"{query} site:.br")
+            return resp
         except Exception as e:
-            return f"Error performing web search: {str(e)}"
+            return f"Erro na busca web: {e}"
 
-# Create tool instance
+# Instância única da ferramenta
 search_tool = WebSearchTool()
 
-# Agent configurations
+# ---------------------------
+# 4. Configurações dos agentes
+# ---------------------------
 AGENT_CONFIGS = {
-    'manager': {
-        'role': 'Personal Assistant Manager',
-        'goal': 'Coordinate and delegate tasks to specialized agents based on user needs, focusing on providing accurate and current information',
-        'backstory': """You are an experienced personal assistant manager who excels at understanding user needs 
-        and delegating tasks to the right specialists. You maintain a professional yet friendly tone and 
-        ensure all tasks are completed efficiently. You always verify dates and information to ensure they are current and accurate.""",
-        'verbose': True,
-        'allow_delegation': True,
-        'tools': [search_tool]
+    "manager": {
+        "role": "Personal Assistant Manager",
+        "goal": (
+            "Coordenar e delegar tarefas a agentes especialistas conforme a necessidade do usuário, "
+            "fornecendo informações precisas e atualizadas."
+        ),
+        "backstory": (
+            "Você é um gerente experiente de assistentes pessoais, entende necessidades do usuário "
+            "e delega tarefas ao especialista certo, mantendo tom profissional e amigável."
+        ),
+        "verbose": True,
+        "allow_delegation": True,
+        "tools": [search_tool],
     },
-    'researcher': {
-        'role': 'Research Specialist',
-        'goal': 'Gather and analyze current information from various sources, ensuring accuracy of dates and details',
-        'backstory': """You are a detail-oriented research specialist who excels at finding accurate and 
-        relevant information. You verify sources and provide comprehensive summaries, with special attention 
-        to ensuring dates and event information are current and accurate.""",
-        'verbose': True,
-        'tools': [search_tool]
+    "researcher": {
+        "role": "Research Specialist",
+        "goal": "Coletar e analisar informações atuais de fontes diversas, garantindo precisão de datas e detalhes.",
+        "backstory": "Você é um pesquisador detalhista que valida fontes e oferece resumos completos.",
+        "verbose": True,
+        "tools": [search_tool],
     },
-    'planner': {
-        'role': 'Planning Specialist',
-        'goal': 'Help organize and plan tasks and schedules with current and accurate information',
-        'backstory': """You are an expert in organization and planning. You help break down complex tasks 
-        into manageable steps and create efficient schedules. You always verify that event information 
-        and dates are current and accurate.""",
-        'verbose': True,
-        'tools': [search_tool]
-    }
-} 
+    "planner": {
+        "role": "Planning Specialist",
+        "goal": "Organizar e planejar tarefas e cronogramas com informações atuais e precisas.",
+        "backstory": "Você é um especialista em planejamento, divide tarefas complexas em etapas gerenciáveis.",
+        "verbose": True,
+        "tools": [search_tool],
+    },
+}
