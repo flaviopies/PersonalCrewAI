@@ -40,7 +40,7 @@ result = None
 if st.button("Submit Request") and user_input:
     try:
         with st.spinner("Buscando informações..."):
-            crew = create_crew(user_input, configs=AGENT_CONFIGS)
+            crew = create_crew(user_input)
             result = crew.kickoff()
             if isinstance(result, dict) and result.get("tasks_output"):
                 raw = getattr(result["tasks_output"][0], "raw", str(result))
