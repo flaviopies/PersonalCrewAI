@@ -9,10 +9,10 @@ from dotenv import load_dotenv
 from langchain_community.utilities import GoogleSerperAPIWrapper
 from crewai.tools import BaseTool
 
-# ─── 1) Carregamento de chaves ────────────────────────────────────────────────
+# ─── 1) Carregamento de chaves (produção via Streamlit Secrets, fallback local .env)
 if "OPENAI_API_KEY" in st.secrets:
     OPENAI_API_KEY = st.secrets["OPENAI_API_KEY"]
-    SERPER_API_KEY   = st.secrets["SERPER_API_KEY"]
+    SERPER_API_KEY  = st.secrets["SERPER_API_KEY"]
 else:
     load_dotenv()
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
@@ -23,30 +23,32 @@ if not OPENAI_API_KEY:
 if not SERPER_API_KEY:
     raise RuntimeError("❌ SERPER_API_KEY não definido.")
 
+# Para que o SDK do OpenAI (usado pelo CrewAI) enxergue a chave
 os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY
 
-# ─── 2) Monkey-patch SQLite antes de chromadb ────────────────────────────────
+# ─── 2) Monkey‑patch SQLite ANTES de qualquer import do chromadb
 if platform.system() != "Windows":
     try:
         import pysqlite3
         sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
     except ImportError:
-        pass  # lembre-se de ter apt.txt com sqlite3 e libsqlite3-dev
+        pass  # certifique-se de ter apt.txt com sqlite3 e libsqlite3-dev
 
-# ─── 3) Ferramenta de Busca Web ──────────────────────────────────────────────
+# ─── 3) Ferramenta de Busca Web ────────────────────────────────────────────────
 class WebSearchTool(BaseTool):
-    # NÃO sobrescreva `name` ou `description` aqui sem anotação Pydantic.
-    search: Optional[GoogleSerperAPIWrapper]
+    # **Anotações Pydantic** para que BaseTool aceite esses campos
+    name: str = "Web Search"
+    description: str = "Busca em sites .br por informações atuais de eventos e notícias."
+    search: GoogleSerperAPIWrapper  # obrigatório: anotar o tipo
 
     def __init__(self):
+        # inicializa o BaseTool corretamente
         super().__init__()
-        self.name = "Web Search"
-        self.description = (
-            "Busca em sites .br por informações atuais de eventos e notícias."
-        )
+        # instancia o wrapper com a chave
         self.search = GoogleSerperAPIWrapper(serper_api_key=SERPER_API_KEY)
 
     def _run(self, query: str) -> str:
+        """Adiciona contexto temporal e filtra .br."""
         try:
             ano = datetime.now().year
             temporal = f"{query} ({ano} OR {ano+1}) site:.br"
@@ -57,9 +59,10 @@ class WebSearchTool(BaseTool):
         except Exception as e:
             return f"Erro na busca web: {e}"
 
+# instância única da ferramenta
 search_tool = WebSearchTool()
 
-# ─── 4) Configurações dos Agentes ───────────────────────────────────────────
+# ─── 4) Configurações dos agentes ──────────────────────────────────────────────
 AGENT_CONFIGS = {
     "manager": {
         "role": "Personal Assistant Manager",
